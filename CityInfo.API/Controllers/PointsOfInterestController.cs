@@ -1,4 +1,5 @@
-﻿using AutoMapper;
+﻿using Asp.Versioning;
+using AutoMapper;
 using CityInfo.API.Models;
 using CityInfo.API.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -7,8 +8,9 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace CityInfo.API.Controllers
 {
-    [Route("api/cities/{cityId}/pointsofinterest")]
-    [Authorize(Policy = "MustBeFromAntwerp")]
+    [Route("api/v{version:apiVersion}/cities/{cityId}/pointsofinterest")]
+    //[Authorize(Policy = "MustBeFromAntwerp")]
+    [ApiVersion(2)]
     [ApiController]
     public class PointsOfInterestController : ControllerBase
     {
@@ -121,7 +123,7 @@ namespace CityInfo.API.Controllers
             return NoContent();
         }
 
-	[HttpPatch("{pointofinterestid}")]
+        [HttpPatch("{pointofinterestid}")]
         public async Task<ActionResult> PartiallyUpdatePointOfInterest(
            int cityId, int pointOfInterestId,
            JsonPatchDocument<PointOfInterestForUpdateDto> patchDocument)
