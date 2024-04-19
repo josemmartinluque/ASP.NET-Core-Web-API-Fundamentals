@@ -1,26 +1,61 @@
 using Asp.Versioning;
 using Asp.Versioning.ApiExplorer;
+using Azure.Extensions.AspNetCore.Configuration.Secrets;
+using Azure.Identity;
+using Azure.Security.KeyVault.Secrets;
 using CityInfo.API;
 using CityInfo.API.DbContexts;
 using CityInfo.API.Services;
+using Microsoft.ApplicationInsights.Extensibility;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
 using System.Reflection;
+using System.Security.Cryptography.Xml;
 using System.Text;
+
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Debug()
     .WriteTo.Console()
-    .WriteTo.File("logs/cityinfo.txt", rollingInterval: RollingInterval.Day)
     .CreateLogger();
 
 var builder = WebApplication.CreateBuilder(args);
+
 //builder.Logging.ClearProviders();
 //builder.Logging.AddConsole();
-builder.Host.UseSerilog();
+
+var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+if (environment == Environments.Development)
+{
+    builder.Host.UseSerilog(
+        (context, loggerConfiguration) => loggerConfiguration
+            .MinimumLevel.Debug()
+            .WriteTo.Console());
+}
+else
+{
+    //var secretClient = new SecretClient(
+    //        new Uri("https://cityinfoapi2024041910475.vault.azure.net/"),
+    //        new DefaultAzureCredential());
+    //builder.Configuration.AddAzureKeyVault(secretClient,
+    //    new KeyVaultSecretManager());
+
+
+    builder.Host.UseSerilog(
+        (context, loggerConfiguration) => loggerConfiguration
+            .MinimumLevel.Debug()
+            .WriteTo.Console()
+            .WriteTo.File("logs/cityinfo.txt", rollingInterval: RollingInterval.Day)
+            .WriteTo.ApplicationInsights(new TelemetryConfiguration
+            {
+                InstrumentationKey = builder.Configuration["ApplicationInsightsInstrumentationKey"]
+            }, TelemetryConverter.Traces));
+}
+
 
 // Add services to the container.
 
@@ -41,7 +76,7 @@ builder.Services.AddProblemDetails();
 //            Environment.MachineName);
 //    };
 //});
- 
+
 builder.Services.AddSingleton<FileExtensionContentTypeProvider>();
 
 #if DEBUG
@@ -86,10 +121,10 @@ builder.Services.AddAuthorization(options =>
 
 builder.Services.AddApiVersioning(setupAction =>
 {
-    setupAction.ReportApiVersions = true;  
-    setupAction.AssumeDefaultVersionWhenUnspecified  = true;
-    setupAction.DefaultApiVersion = new ApiVersion(1, 0); 
-}).AddMvc() 
+    setupAction.ReportApiVersions = true;
+    setupAction.AssumeDefaultVersionWhenUnspecified = true;
+    setupAction.DefaultApiVersion = new ApiVersion(1, 0);
+}).AddMvc()
 .AddApiExplorer(setupAction =>
 {
     setupAction.SubstituteApiVersionInUrl = true;
@@ -129,7 +164,7 @@ builder.Services.AddSwaggerGen(setupAction =>
         Description = "Input a valid token to access this API"
     });
 
-    setupAction.AddSecurityRequirement(new ()
+    setupAction.AddSecurityRequirement(new()
     {
         {
             new ()
@@ -137,10 +172,16 @@ builder.Services.AddSwaggerGen(setupAction =>
                 Reference = new OpenApiReference {
                     Type = ReferenceType.SecurityScheme,
                     Id = "CityInfoApiBearerAuth" }
-            }, 
-            new List<string>() 
+            },
+            new List<string>()
         }
     });
+});
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor
+    | ForwardedHeaders.XForwardedProto;
 });
 
 var app = builder.Build();
@@ -151,20 +192,23 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler();
 }
 
-if (app.Environment.IsDevelopment())
+app.UseForwardedHeaders();
+
+
+//if (app.Environment.IsDevelopment())
+//{
+app.UseSwagger();
+app.UseSwaggerUI(setupAction =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI(setupAction =>
+    var descriptions = app.DescribeApiVersions();
+    foreach (var description in descriptions)
     {
-        var descriptions = app.DescribeApiVersions();
-        foreach (var description in descriptions)
-        {
-            setupAction.SwaggerEndpoint(
-                $"/swagger/{description.GroupName}/swagger.json",
-                description.GroupName.ToUpperInvariant());
-        }
-    });
-}
+        setupAction.SwaggerEndpoint(
+            $"/swagger/{description.GroupName}/swagger.json",
+            description.GroupName.ToUpperInvariant());
+    }
+});
+//}
 
 app.UseHttpsRedirection();
 

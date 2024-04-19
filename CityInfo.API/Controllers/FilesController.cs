@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore.ChangeTracking.Internal;
 namespace CityInfo.API.Controllers
 {
     [Route("api/v{version:apiVersion}/files")] 
-    //  [Authorize]
+    [Authorize]
     [ApiController]
     public class FilesController : ControllerBase
     {
